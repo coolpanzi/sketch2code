@@ -118,25 +118,68 @@ export class LayeredRestorationEngine {
     return Array.from(colors);
   }
 
-  private sanitizeFileName(name: string): string {
-    const map: [RegExp, string][] = [
-      [/业绩达成/, 'performance'],
-      [/渠道/, 'channel'],
-      [/产渠道/, 'product-channel'],
-      [/机构/, 'organization'],
-      [/看板/, 'dashboard'],
-      [/报表/, 'report'],
-      [/首页/, 'home'],
-      [/列表/, 'list'],
-      [/详情/, 'detail'],
-    ];
+  /**
+   * Map of Chinese terms to English slugs, ordered longest-first for greedy matching.
+   * Multiple terms are concatenated with hyphens so names stay unique.
+   */
+  private static readonly NAME_MAP: [RegExp, string][] = [
+    // Longer/more specific patterns first
+    [/业绩达成-产渠道/, 'product-channel'],
+    [/业绩达成-渠道/, 'channel'],
+    [/业绩达成-机构/, 'organization'],
+    [/业绩达成/, 'performance'],
+    [/产渠道/, 'product-channel'],
+    [/看板/, 'dashboard'],
+    [/报表/, 'report'],
+    [/首页/, 'home'],
+    [/列表/, 'list'],
+    [/详情/, 'detail'],
+    [/渠道/, 'channel'],
+    [/机构/, 'organization'],
+    [/导航/, 'nav'],
+    [/登录/, 'login'],
+    [/搜索/, 'search'],
+    [/设置/, 'settings'],
+    [/个人/, 'profile'],
+    [/消息/, 'messages'],
+    [/数据/, 'data'],
+  ];
 
-    let english = 'component';
-    for (const [re, eng] of map) {
-      if (re.test(name)) english = eng;
+  private sanitizeFileName(name: string): string {
+    // Strategy: concatenate ALL matching keywords (longest-first) to form a unique slug
+    const parts: string[] = [];
+
+    for (const [re, eng] of LayeredRestorationEngine.NAME_MAP) {
+      if (re.test(name) && !parts.includes(eng)) {
+        parts.push(eng);
+      }
     }
 
+    // If no keywords matched, try transliterating the whole name
+    if (parts.length === 0) {
+      // Strip leading digits/dots/spaces and transliterate
+      const cleaned = name.replace(/^\d+[-.\s]*/, '').trim();
+      parts.push(this.transliterateName(cleaned));
+    }
+
+    const slug = parts.join('-') || 'component';
+
+    // Preserve the leading numeric prefix (e.g. "1-", "2-", "3-") for guaranteed uniqueness
     const idx = name.match(/^(\d+)/)?.[1];
-    return (idx ? idx + '-' : '') + english;
+    return (idx ? idx + '-' : '') + slug;
+  }
+
+  /**
+   * Simple fallback: convert name to a safe ASCII slug.
+   */
+  private transliterateName(name: string): string {
+    return name
+      .replace(/[^\w\s-]/g, '')    // Remove non-word chars (Chinese etc)
+      .replace(/\s+/g, '-')         // Spaces to hyphens
+      .replace(/-+/g, '-')          // Collapse hyphens
+      .replace(/^-+|-+$/g, '')      // Trim hyphens
+      .toLowerCase()
+      .slice(0, 30)
+      || 'component';
   }
 }

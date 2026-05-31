@@ -547,9 +547,12 @@ export class LayerExtractor {
       case LayerType.SHAPE:
         layer = this.parseShapeLayer(layerData, baseLayer, style, warnings);
         break;
-      case LayerType.IMAGE:
-        // 简化处理，异步版本会在主流程中处理
-        layer = { ...baseLayer, type: LayerType.IMAGE, imageData: { ref: '', data: Buffer.alloc(0), width: baseLayer.rect.width, height: baseLayer.rect.height } };
+      case LayerType.IMAGE: {
+        // Store the image reference so it can be resolved later
+        const imgRef = (layerData.image?._ref as string) || (layerData.image?.data?._data ? 'inline' : '');
+        layer = { ...baseLayer, type: LayerType.IMAGE, imageData: { ref: imgRef, data: Buffer.alloc(0), width: baseLayer.rect.width, height: baseLayer.rect.height } };
+        break;
+      }
         break;
       case LayerType.GROUP:
         layer = this.parseGroupLayer(layerData, baseLayer, depth, document, warnings);

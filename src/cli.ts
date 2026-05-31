@@ -14,7 +14,7 @@ import { parseArgs } from 'node:util';
 import { loadConfig, saveConfig, printConfig } from './config.js';
 import { parseSketchFile } from './core/parser/SketchFileParser.js';
 import { LayeredRestorationEngine } from './core/codegen/LayeredRestorationEngine.js';
-import { LayerType, ArtboardLayer } from './core/types.js';
+import { LayerType, ArtboardLayer, BlendMode } from './core/types.js';
 
 // ─── Version ───────────────────────────────────────────────────────────────
 const VERSION = '0.2.0';
@@ -232,7 +232,7 @@ async function cmdConvert(args: string[]) {
       visible: true,
       locked: false,
       opacity: 1,
-      blendMode: 0 as any,
+      blendMode: BlendMode.NORMAL,
       rotation: 0,
       rect: {
         x: 0,

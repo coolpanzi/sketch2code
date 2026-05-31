@@ -1,6 +1,9 @@
 /**
  * Sketch文件解析器 - 核心模块
  * 提供统一的.sketch文件解析功能
+ *
+ * 关键设计：直接遍历 document.pages[] 保持页面归属，
+ * 不把所有页面的 artboard 混在一起再反推。
  */
 
 import {
@@ -10,7 +13,8 @@ import {
   DesignSystem,
   SketchMetadata,
   LayerType,
-  UUID
+  UUID,
+  ArtboardLayer,
 } from '../types.js';
 import { SketchFileReader } from './SketchFileReader.js';
 import { LayerExtractor } from './LayerExtractor.js';
@@ -77,42 +81,82 @@ export class SketchFileParser {
     const warnings: string[] = [];
 
     try {
-      // 第一步：读取文件
+      // Step 1: Read the .sketch ZIP file
       const fileData = await this.fileReader.read(filePath);
       if (fileData.errors.length > 0) {
         errors.push(...fileData.errors);
       }
       warnings.push(...fileData.warnings);
 
-      // 第二步：提取图层
-      const layersResult = await this.layerExtractor.extract(fileData.document);
-      if (layersResult.errors.length > 0) {
-        errors.push(...layersResult.errors);
+      const document = fileData.document;
+      if (!document) {
+        return {
+          success: false,
+          errors: [...errors, { stage: 'parsing', message: 'Failed to read document data' }],
+          warnings,
+          metadata: { parseTime: Date.now() - startTime, fileSize: fileData.fileSize, version: 'unknown' }
+        };
       }
-      warnings.push(...layersResult.warnings);
 
-      // 第三步：提取设计系统
+      // Step 2: Build pages directly from document.pages[]
+      // Each page in document.pages has a .name and .layers[] — we preserve
+      // this mapping instead of guessing from artboard names.
+      const rawPages: any[] = document.pages || [];
+      const pages: Page[] = [];
+      const allLayers: Layer[] = [];
+
+      for (const pageData of rawPages) {
+        const pageName: string = pageData.name || 'Unnamed Page';
+        const pageLayers: any[] = pageData.layers || [];
+
+        // Extract layers for this page using LayerExtractor
+        const layerResult = await this.layerExtractor.extract({ pages: [pageData] });
+
+        if (layerResult.errors.length > 0) {
+          errors.push(...layerResult.errors);
+        }
+        warnings.push(...layerResult.warnings);
+
+        // Collect artboards for this page
+        const pageArtboards: ArtboardLayer[] = layerResult.artboards as ArtboardLayer[];
+
+        allLayers.push(...layerResult.allLayers);
+
+        // If no artboards found, treat top-level layers as the page content
+        const pageContent = pageArtboards.length > 0 ? pageArtboards : layerResult.allLayers;
+
+        const page: Page = {
+          id: pageData.do_objectID || this.generateId(),
+          name: pageName,
+          artboards: pageArtboards,
+          symbols: [],
+          layers: pageContent,
+          metadata: {
+            totalLayers: layerResult.allLayers.length,
+            actualDimensions: this.calculatePageSize(pageContent),
+            layoutBounds: this.calculateLayoutBounds(pageContent)
+          }
+        };
+
+        pages.push(page);
+      }
+
+      // Step 3: Extract design system from all layers
       let designSystem: DesignSystem;
       if (this.config.analyzeDesignSystem) {
-        const dsResult = await this.designSystemExtractor.extract(
-          fileData.document,
-          layersResult.allLayers
-        );
+        const dsResult = await this.designSystemExtractor.extract(document, allLayers);
         designSystem = dsResult.designSystem;
         warnings.push(...dsResult.warnings);
       } else {
         designSystem = this.createEmptyDesignSystem();
       }
 
-      // 第四步：构建页面结构
-      const pages = this.buildPages(layersResult.artboards, layersResult.allLayers);
+      // Step 4: Analyze symbol usage
+      const symbolUsage = this.analyzeSymbolUsage(allLayers);
 
-      // 第五步：分析Symbol使用情况
-      const symbolUsage = this.analyzeSymbolUsage(layersResult.allLayers);
-
-      // 构建最终结果
+      // Build final result
       const sketchFile: SketchFile = {
-        metadata: this.extractMetadata(fileData.document),
+        metadata: this.extractMetadata(document),
         pages,
         designSystem,
         images: fileData.images,
@@ -129,7 +173,7 @@ export class SketchFileParser {
         metadata: {
           parseTime,
           fileSize: fileData.fileSize,
-          version: fileData.document.meta?.version || 'unknown'
+          version: document.meta?.version || 'unknown'
         }
       };
 
@@ -152,73 +196,17 @@ export class SketchFileParser {
   }
 
   /**
-   * 构建页面结构
-   */
-  private buildPages(artboards: Layer[], allLayers: Layer[]): Page[] {
-    // 按页面分组artboards
-    const pageMap = new Map<string, Layer[]>();
-
-    for (const artboard of artboards) {
-      // 假设artboard的name包含页面信息
-      const pageName = this.extractPageName(artboard.name);
-
-      if (!pageMap.has(pageName)) {
-        pageMap.set(pageName, []);
-      }
-
-      pageMap.get(pageName)!.push(artboard);
-    }
-
-    // 构建页面对象
-    const pages: Page[] = [];
-
-    for (const [pageName, pageArtboards] of pageMap) {
-      const page: Page = {
-        id: this.generateId(),
-        name: pageName,
-        artboards: pageArtboards as any[],
-        symbols: [],
-        layers: pageArtboards,
-        metadata: {
-          totalLayers: pageArtboards.length,
-          actualDimensions: this.calculatePageSize(pageArtboards),
-          layoutBounds: this.calculateLayoutBounds(pageArtboards)
-        }
-      };
-
-      pages.push(page);
-    }
-
-    return pages;
-  }
-
-  /**
-   * 从artboard名称中提取页面名称
-   */
-  private extractPageName(artboardName: string): string {
-    // 简单的命名规则：如果artboard名称包含数字前缀，去掉数字前缀
-    // 例如： "1-首页" -> "首页"
-    const match = artboardName.match(/^\d+[-.]?\s*(.+)$/);
-    return match ? match[1] : artboardName;
-  }
-
-  /**
    * 计算页面尺寸
    */
-  private calculatePageSize(artboards: Layer[]): { width: number; height: number } {
-    if (artboards.length === 0) {
-      return { width: 0, height: 0 };
-    }
+  private calculatePageSize(layers: Layer[]): { width: number; height: number } {
+    if (layers.length === 0) return { width: 0, height: 0 };
 
-    // 使用最大的artboard尺寸
     let maxWidth = 0;
     let maxHeight = 0;
-
-    for (const artboard of artboards) {
-      maxWidth = Math.max(maxWidth, artboard.rect.width);
-      maxHeight = Math.max(maxHeight, artboard.rect.height);
+    for (const layer of layers) {
+      maxWidth = Math.max(maxWidth, layer.rect.width);
+      maxHeight = Math.max(maxHeight, layer.rect.height);
     }
-
     return { width: maxWidth, height: maxHeight };
   }
 
@@ -226,28 +214,16 @@ export class SketchFileParser {
    * 计算布局边界
    */
   private calculateLayoutBounds(layers: Layer[]): any {
-    if (layers.length === 0) {
-      return { x: 0, y: 0, width: 0, height: 0 };
-    }
+    if (layers.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
 
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const layer of layers) {
       minX = Math.min(minX, layer.rect.x);
       minY = Math.min(minY, layer.rect.y);
       maxX = Math.max(maxX, layer.rect.x + layer.rect.width);
       maxY = Math.max(maxY, layer.rect.y + layer.rect.height);
     }
-
-    return {
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY
-    };
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
   }
 
   /**
@@ -277,16 +253,9 @@ export class SketchFileParser {
       }
     }
 
-    return {
-      totalSymbols,
-      uniqueComponents: componentMap.size,
-      componentMap
-    };
+    return { totalSymbols, uniqueComponents: componentMap.size, componentMap };
   }
 
-  /**
-   * 提取元数据
-   */
   private extractMetadata(document: any): SketchMetadata {
     return {
       version: document.meta?.version || 'unknown',
@@ -297,30 +266,15 @@ export class SketchFileParser {
     };
   }
 
-  /**
-   * 创建空的设计系统
-   */
   private createEmptyDesignSystem(): DesignSystem {
-    return {
-      colors: [],
-      textStyles: [],
-      layerStyles: [],
-      gradients: [],
-      spacing: []
-    };
+    return { colors: [], textStyles: [], layerStyles: [], gradients: [], spacing: [] };
   }
 
-  /**
-   * 获取颜色空间名称
-   */
   private getColorSpaceName(space: number): 'Unmanaged' | 'sRGB' | 'P3' {
     const colorSpaces: Array<'Unmanaged' | 'sRGB' | 'P3'> = ['Unmanaged', 'sRGB', 'P3'];
     return colorSpaces[space] || 'Unmanaged';
   }
 
-  /**
-   * 生成唯一ID
-   */
   private generateId(): UUID {
     return `id_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
