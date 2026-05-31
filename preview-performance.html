@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>业绩达成 - 产渠道 | 组件预览</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f0f2f5;
+            padding: 20px;
+        }
+
+        .preview-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .preview-header {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .preview-header h1 {
+            font-size: 20px;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+
+        .preview-header p {
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .component-wrapper {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-container">
+        <div class="preview-header">
+            <h1>📊 业绩达成 - 产渠道</h1>
+            <p>从 <code>0625企康看版.sketch</code> 自动生成</p>
+        </div>
+
+        <div class="component-wrapper">
+            <div id="app"></div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        const app = createApp({
+            setup() {
+                const selectedPeriod = ref('month');
+                const chartRefs = ref({});
+
+                const channels = ref([
+                    { id: 'c1', name: '渠道A', target: 1000, actual: 850, rate: 85, trend: '+5.2%', trendClass: 'up', history: [70, 75, 80, 82, 85] },
+                    { id: 'c2', name: '渠道B', target: 1200, actual: 1350, rate: 112, trend: '+8.1%', trendClass: 'up', history: [90, 95, 100, 108, 112] },
+                    { id: 'c3', name: '渠道C', target: 800, actual: 600, rate: 75, trend: '-3.4%', trendClass: 'down', history: [80, 78, 76, 74, 75] },
+                    { id: 'c4', name: '渠道D', target: 1500, actual: 1420, rate: 94, trend: '+1.2%', trendClass: 'neutral', history: [88, 90, 92, 93, 94] },
+                    { id: 'c5', name: '渠道E', target: 900, actual: 980, rate: 108, trend: '+6.7%', trendClass: 'up', history: [85, 88, 92, 96, 108] }
+                ]);
+
+                const totalTarget = computed(() => channels.value.reduce((sum, c) => sum + c.target, 0));
+                const totalActual = computed(() => channels.value.reduce((sum, c) => sum + c.actual, 0));
+                const overallRate = computed(() => Math.round((totalActual.value / totalTarget.value) * 100));
+
+                const drawSparkline = (canvas, data) => {
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) return;
+                    const width = canvas.width = canvas.offsetWidth;
+                    const height = canvas.height = canvas.offsetHeight;
+                    ctx.clearRect(0, 0, width, height);
+                    ctx.beginPath();
+                    const step = width / (data.length - 1);
+                    const max = Math.max(...data);
+                    const min = Math.min(...data);
+                    const range = max - min || 1;
+                    data.forEach((val, i) => {
+                        const x = i * step;
+                        const y = height - ((val - min) / range) * (height - 10) - 5;
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    });
+                    ctx.strokeStyle = '#3b82f6';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                };
+
+                onMounted(() => {
+                    channels.value.forEach(channel => {
+                        const canvas = chartRefs.value[channel.id];
+                        if (canvas) setTimeout(() => drawSparkline(canvas, channel.history), 100);
+                    });
+                });
+
+                return {
+                    selectedPeriod,
+                    channels,
+                    totalTarget,
+                    totalActual,
+                    overallRate,
+                    chartRefs,
+                    drawSparkline
+                };
+            },
+            template: `
+                <div class="performance-channel">
+                    <header class="header">
+                        <h2>业绩达成 - 产渠道</h2>
+                        <div class="filters">
+                            <select v-model="selectedPeriod">
+                                <option value="month">本月</option>
+                                <option value="quarter">本季度</option>
+                                <option value="year">本年度</option>
+                            </select>
+                        </div>
+                    </header>
+                    <div class="channel-grid">
+                        <div v-for="channel in channels" :key="channel.id" class="channel-card">
+                            <div class="card-header">
+                                <span class="channel-name">{{ channel.name }}</span>
+                                <span class="trend" :class="channel.trendClass">{{ channel.trend }}</span>
+                            </div>
+                            <div class="metrics">
+                                <div class="metric">
+                                    <span class="label">目标</span>
+                                    <span class="value">{{ channel.target }}</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="label">实际</span>
+                                    <span class="value">{{ channel.actual }}</span>
+                                </div>
+                            </div>
+                            <div class="progress-section">
+                                <div class="progress-header">
+                                    <span class="label">达成率</span>
+                                    <span class="value">{{ channel.rate }}%</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" :style="{ width: channel.rate + '%' }"></div>
+                                </div>
+                            </div>
+                            <div class="mini-chart">
+                                <canvas :ref="el => chartRefs[channel.id] = el"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `
+        });
+
+        app.mount('#app');
+    </script>
+
+    <style>
+        .performance-channel {
+            padding: 24px;
+            background: #f8fafc;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .header h2 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+            color: #1e293b;
+        }
+        .filters select {
+            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            background: white;
+            font-size: 14px;
+        }
+        .channel-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .channel-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+        .channel-card:hover {
+            transform: translateY(-2px);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .channel-name {
+            font-size: 16px;
+            font-weight: 500;
+            color: #334155;
+        }
+        .trend {
+            font-size: 14px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .trend.up { color: #16a34a; background: #dcfce7; }
+        .trend.down { color: #dc2626; background: #fee2e2; }
+        .trend.neutral { color: #64748b; background: #f1f5f9; }
+        .metrics {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .metric {
+            flex: 1;
+            text-align: center;
+            padding: 12px;
+            background: #f8fafc;
+            border-radius: 8px;
+        }
+        .metric .label {
+            display: block;
+            font-size: 12px;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+        .metric .value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #0f172a;
+        }
+        .progress-section {
+            margin-bottom: 16px;
+        }
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .progress-header .label { color: #64748b; }
+        .progress-header .value { font-weight: 600; color: #0f172a; }
+        .progress-bar {
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #2563eb);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        .mini-chart {
+            height: 40px;
+            width: 100%;
+            margin-top: 8px;
+        }
+        .mini-chart canvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</body>
+</html>

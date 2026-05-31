@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sketch2Code 组件预览</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f0f2f5;
+            padding: 20px;
+        }
+
+        .preview-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .preview-header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .preview-header h1 {
+            font-size: 24px;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+
+        .preview-header p {
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .component-wrapper {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+
+        .component-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .component-list {
+            display: grid;
+            gap: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-container">
+        <div class="preview-header">
+            <h1>🎨 Sketch2Code 组件预览</h1>
+            <p>从Sketch设计文件生成的Vue组件实时预览</p>
+        </div>
+
+        <div id="app">
+            <div v-if="loading" class="loading">
+                加载组件中...
+            </div>
+
+            <div v-else-if="error" class="error">
+                {{ error }}
+            </div>
+
+            <div v-else class="component-list">
+                <div v-for="(component, index) in components" :key="index" class="component-wrapper">
+                    <div class="component-title">{{ component.name }}</div>
+                    <div v-html="component.template"></div>
+                    <style>{{ component.style }}</style>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    loading: true,
+                    error: null,
+                    components: []
+                }
+            },
+            async mounted() {
+                try {
+                    // 加载生成的组件
+                    const response = await fetch('./components.json');
+                    if (!response.ok) throw new Error('无法加载组件数据');
+
+                    const data = await response.json();
+                    this.components = data.components;
+                } catch (e) {
+                    this.error = '预览组件需要先生成组件。请运行: npx tsx test-final.ts';
+                    console.error('加载失败:', e);
+                } finally {
+                    this.loading = false;
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

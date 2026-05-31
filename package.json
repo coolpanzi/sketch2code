@@ -1,0 +1,47 @@
+{
+  "name": "sketch2code",
+  "version": "0.1.0",
+  "description": "Convert Sketch design files to Vue + Tailwind frontend code using LLM",
+  "type": "module",
+  "bin": {
+    "sketch2code": "dist/cli.cjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node scripts/build.js",
+    "start": "node dist/cli.js",
+    "dev": "node --import tsx src/cli.ts",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "preview": "node --import tsx serve-preview.ts",
+    "generate": "node --import tsx test-final.ts",
+    "layered": "node --import tsx test-layered-restoration.ts"
+  },
+  "keywords": [
+    "sketch",
+    "design-to-code",
+    "vue",
+    "tailwind",
+    "llm"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@sketch-hq/sketch-file-format-ts": "^6.5.0",
+    "color-convert": "^2.0.1",
+    "commander": "^12.1.0",
+    "ejs": "^3.1.10",
+    "jszip": "^3.10.1",
+    "openai": "^4.70.0",
+    "sharp": "^0.33.5",
+    "sketch-constructor": "^1.26.0"
+  },
+  "devDependencies": {
+    "@types/ejs": "^3.1.5",
+    "@types/jszip": "^3.1.6",
+    "esbuild": "^0.24.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

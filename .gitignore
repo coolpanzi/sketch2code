@@ -1,0 +1,10 @@
+node_modules/
+dist/
+output/
+test-output/
+.DS_Store
+*.sketch
+*.png
+.claude/
+.playwright-mcp/
+.reasonix/

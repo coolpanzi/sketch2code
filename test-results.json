@@ -1,0 +1,45 @@
+[
+  {
+    "name": "Enhanced Parser",
+    "status": "pass",
+    "duration": 13,
+    "details": {
+      "pageCount": 1,
+      "layerCount": 0,
+      "imageCount": 0,
+      "designSystemColors": 0,
+      "metadata": {
+        "version": "unknown",
+        "colorSpace": "Unmanaged",
+        "appVersion": "unknown"
+      }
+    }
+  },
+  {
+    "name": "Image Analyzer",
+    "status": "partial",
+    "duration": 0,
+    "details": {
+      "message": "No images found in sketch file"
+    }
+  },
+  {
+    "name": "Parser Comparison",
+    "status": "pass",
+    "duration": 7,
+    "details": {
+      "original": {
+        "duration": 2,
+        "pageCount": 1,
+        "layerCount": 0
+      },
+      "enhanced": {
+        "duration": 1,
+        "pageCount": 1,
+        "layerCount": 0,
+        "designSystemColors": 0,
+        "designSystemTextStyles": 0
+      }
+    }
+  }
+]
