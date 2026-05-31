@@ -122,8 +122,17 @@ export class SketchFileParser {
 
         allLayers.push(...layerResult.allLayers);
 
-        // If no artboards found, treat top-level layers as the page content
-        const pageContent = pageArtboards.length > 0 ? pageArtboards : layerResult.allLayers;
+        // If no artboards found, use ONLY the top-level layers (not the flattened allLayers).
+        // allLayers is recursively flattened — using it would cause nested children to appear
+        // as siblings, breaking LayoutConverter's coordinate detection.
+        const topLevelLayers = layerResult.allLayers.filter(l => {
+          // A top-level layer is one whose parent is the page, not another layer.
+          // In the extraction flow, these are the direct children of pageData.layers.
+          // We identify them by checking if they appear in pageData.layers.
+          return (pageData.layers || []).some((pl: any) => pl.do_objectID === l.id);
+        });
+
+        const pageContent = pageArtboards.length > 0 ? pageArtboards : topLevelLayers;
 
         const page: Page = {
           id: pageData.do_objectID || this.generateId(),
@@ -171,8 +180,16 @@ export class SketchFileParser {
         e.stage === 'file-reading' || e.stage === 'parsing'
       );
 
+      // Also consider it a failure if zero layers were extracted from any page that had layers
+      const totalPagesWithLayers = rawPages.filter((p: any) => (p.layers || []).length > 0).length;
+      const hasAnyContent = allLayers.length > 0 || pages.some(p => p.artboards.length > 0);
+
+      const success = fatalErrors.length === 0
+        && !!sketchFile
+        && (totalPagesWithLayers === 0 || hasAnyContent);
+
       return {
-        success: fatalErrors.length === 0 && !!sketchFile,
+        success,
         file: sketchFile,  // always return data so caller can use partial results
         errors,
         warnings,

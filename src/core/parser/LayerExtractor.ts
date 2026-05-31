@@ -180,7 +180,7 @@ export class LayerExtractor {
 
       default:
         warnings.push(`Unknown layer type: ${layerData._class}`);
-        layer = { ...baseLayer, type: LayerType.UNKNOWN } as unknown as Layer;
+        layer = { ...baseLayer, type: LayerType.UNKNOWN, rawClass: layerData._class };
     }
 
     return { layer, warnings, depth };
@@ -548,9 +548,28 @@ export class LayerExtractor {
         layer = this.parseShapeLayer(layerData, baseLayer, style, warnings);
         break;
       case LayerType.IMAGE: {
-        // Store the image reference so it can be resolved later
-        const imgRef = (layerData.image?._ref as string) || (layerData.image?.data?._data ? 'inline' : '');
-        layer = { ...baseLayer, type: LayerType.IMAGE, imageData: { ref: imgRef, data: Buffer.alloc(0), width: baseLayer.rect.width, height: baseLayer.rect.height } };
+        // Sync path: store the image reference for later resolution.
+        // For file references: store the _ref path.
+        // For inline data: store the base64 string directly so it can be decoded in a post-pass.
+        const img = layerData.image;
+        let imgRef = '';
+        let imgData = Buffer.alloc(0);
+
+        if (img) {
+          if (img._class === 'MSJSONFileReference') {
+            imgRef = img._ref || '';
+          } else if (img._class === 'MSJSONOriginalDataReference' && img.data?._data) {
+            imgRef = 'inline';
+            // Preserve the base64 string for async post-pass resolution
+            imgData = Buffer.from(img.data._data, 'base64');
+          }
+        }
+
+        layer = {
+          ...baseLayer,
+          type: LayerType.IMAGE,
+          imageData: { ref: imgRef, data: imgData, width: baseLayer.rect.width, height: baseLayer.rect.height }
+        };
         break;
       }
       case LayerType.GROUP:

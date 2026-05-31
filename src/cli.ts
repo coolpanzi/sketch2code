@@ -152,7 +152,6 @@ async function cmdConvert(args: string[]) {
       'no-layout': { type: 'boolean' },
       page: { type: 'string', short: 'p' },
       artboard: { type: 'string', short: 'a' },
-      tolerance: { type: 'string', short: 't' },
     },
     strict: false,
   });
@@ -168,7 +167,6 @@ async function cmdConvert(args: string[]) {
     console.log('  --no-layout            Skip layout conversion (keep absolute positioning)');
     console.log('  -p, --page <name>      Page to convert (default: first page)');
     console.log('  -a, --artboard <n>     Artboard index to convert (default: all)');
-    console.log('  -t, --tolerance <px>   Layout alignment tolerance (default: 4)');
     return;
   }
 
@@ -235,6 +233,7 @@ async function cmdConvert(args: string[]) {
   if (artboards.length === 0) {
     // If no artboards, treat top-level layers as a single artboard
     console.log('   No artboards found, using page layers directly.\n');
+    const dims = targetPage.metadata.actualDimensions;
     const fakeArtboard: ArtboardLayer = {
       id: 'page-root',
       name: targetPage.name,
@@ -247,8 +246,8 @@ async function cmdConvert(args: string[]) {
       rect: {
         x: 0,
         y: 0,
-        width: targetPage.metadata.actualDimensions.width,
-        height: targetPage.metadata.actualDimensions.height,
+        width: dims.width || 1440,   // fallback to common desktop width
+        height: dims.height || 900,  // fallback to common desktop height
       },
       cornerRadius: 0,
       clipsContent: false,

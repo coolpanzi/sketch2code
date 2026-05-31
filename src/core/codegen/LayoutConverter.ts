@@ -454,7 +454,7 @@ export class LayoutConverter {
 
   /**
    * Applies a flex row layout to the container.
-   * Preserves position:relative on parent so it stays in its own parent's layout context.
+   * Converts parent position to relative with margin preserving original placement.
    */
   private applyRowLayout(
     parentCSS: Record<string, string>,
@@ -469,11 +469,9 @@ export class LayoutConverter {
       parentCSS['gap'] = `${gap}px`;
     }
 
-    // Keep position:relative so this container stays positioned within its own parent
-    // (which may use absolute positioning to place this container)
-    parentCSS['position'] = 'relative';
-    delete parentCSS['left'];
-    delete parentCSS['top'];
+    // Preserve original position as margin so the container doesn't jump to (0,0)
+    // within its absolutely-positioned parent.
+    this.preservePositionAsMargin(parentCSS);
 
     // Remove absolute positioning from children (they flow within the flex container)
     for (const child of childBounds) {
@@ -488,7 +486,7 @@ export class LayoutConverter {
 
   /**
    * Applies a flex column layout to the container.
-   * Preserves position:relative on parent so it stays in its own parent's layout context.
+   * Converts parent position to relative with margin preserving original placement.
    */
   private applyColumnLayout(
     parentCSS: Record<string, string>,
@@ -503,10 +501,8 @@ export class LayoutConverter {
       parentCSS['gap'] = `${gap}px`;
     }
 
-    // Keep position:relative so this container stays positioned within its own parent
-    parentCSS['position'] = 'relative';
-    delete parentCSS['left'];
-    delete parentCSS['top'];
+    // Preserve original position as margin
+    this.preservePositionAsMargin(parentCSS);
 
     // Remove absolute positioning from children
     for (const child of childBounds) {
@@ -555,10 +551,8 @@ export class LayoutConverter {
       parentCSS['gap'] = `${gap}px`;
     }
 
-    // Keep position:relative so this container stays positioned within its own parent
-    parentCSS['position'] = 'relative';
-    delete parentCSS['left'];
-    delete parentCSS['top'];
+    // Preserve original position as margin
+    this.preservePositionAsMargin(parentCSS);
 
     // Remove absolute positioning from children
     for (const child of childBounds) {
@@ -591,10 +585,8 @@ export class LayoutConverter {
     parentCSS['justify-content'] = 'space-between';
     parentCSS['align-items'] = 'center';
 
-    // Keep position:relative so this container stays positioned within its own parent
-    parentCSS['position'] = 'relative';
-    delete parentCSS['left'];
-    delete parentCSS['top'];
+    // Preserve original position as margin
+    this.preservePositionAsMargin(parentCSS);
 
     // Remove absolute positioning from children
     for (const child of childBounds) {
@@ -605,6 +597,29 @@ export class LayoutConverter {
       delete childCSS['left'];
       delete childCSS['top'];
     }
+  }
+
+  /**
+   * Converts absolute position (left/top) to margin on a flex/grid container.
+   * This prevents the container from jumping to (0,0) when switched to
+   * position:relative inside an absolutely-positioned parent.
+   */
+  private preservePositionAsMargin(parentCSS: Record<string, string>): void {
+    const left = parentCSS['left'];
+    const top = parentCSS['top'];
+
+    parentCSS['position'] = 'relative';
+
+    // Convert left/top to margin-left/margin-top to preserve visual position
+    if (left && left !== '0' && left !== '0px') {
+      parentCSS['margin-left'] = left;
+    }
+    if (top && top !== '0' && top !== '0px') {
+      parentCSS['margin-top'] = top;
+    }
+
+    delete parentCSS['left'];
+    delete parentCSS['top'];
   }
 
 }

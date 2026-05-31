@@ -283,6 +283,14 @@ export interface ComponentLayer extends BaseLayer {
 }
 
 /**
+ * 未知图层（无法识别类型的兜底）
+ */
+export interface UnknownLayer extends BaseLayer {
+  type: LayerType.UNKNOWN;
+  rawClass?: string; // 原始 _class 值，用于调试
+}
+
+/**
  * 图层联合类型
  */
 export type Layer =
@@ -292,7 +300,8 @@ export type Layer =
   | GroupLayer
   | ArtboardLayer
   | SymbolLayer
-  | ComponentLayer;
+  | ComponentLayer
+  | UnknownLayer;
 
 /**
  * 页面定义
@@ -455,7 +464,7 @@ export interface GenerationResult {
   fileName: string;
   usedTokens: {
     colors: string[];
-    spacing: number[];
+    spacing: Spacing[];
     typography: TextStyleDefinition[];
   };
   metadata: {
