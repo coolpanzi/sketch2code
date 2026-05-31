@@ -88,7 +88,7 @@ export class LayeredRestorationEngine {
       script: phase2Result.script,
       style: cssText,
       fileName: this.sanitizeFileName(componentName) + '.vue',
-      usedTokens: { colors: usedColors as any[], spacing: [], typography: [] },
+      usedTokens: { colors: usedColors.filter(c => c.startsWith('#')), spacing: [], typography: [] },
       metadata: { generationTime, llmCalls, accuracy: undefined }
     };
   }

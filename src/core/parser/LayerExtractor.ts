@@ -553,7 +553,6 @@ export class LayerExtractor {
         layer = { ...baseLayer, type: LayerType.IMAGE, imageData: { ref: imgRef, data: Buffer.alloc(0), width: baseLayer.rect.width, height: baseLayer.rect.height } };
         break;
       }
-        break;
       case LayerType.GROUP:
         layer = this.parseGroupLayer(layerData, baseLayer, depth, document, warnings);
         break;

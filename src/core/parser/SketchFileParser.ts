@@ -165,9 +165,15 @@ export class SketchFileParser {
 
       const parseTime = Date.now() - startTime;
 
+      // Only file-level errors (reading, top-level parsing) are fatal.
+      // Layer-level errors (unknown types, missing data) should not block the whole file.
+      const fatalErrors = errors.filter(e =>
+        e.stage === 'file-reading' || e.stage === 'parsing'
+      );
+
       return {
-        success: errors.length === 0,
-        file: sketchFile,
+        success: fatalErrors.length === 0 && !!sketchFile,
+        file: sketchFile,  // always return data so caller can use partial results
         errors,
         warnings,
         metadata: {

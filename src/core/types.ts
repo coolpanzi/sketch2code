@@ -454,7 +454,7 @@ export interface GenerationResult {
   style: string;
   fileName: string;
   usedTokens: {
-    colors: HexColor[];
+    colors: string[];
     spacing: number[];
     typography: TextStyleDefinition[];
   };

@@ -193,7 +193,17 @@ async function cmdConvert(args: string[]) {
   const pageNames = sketchFile.pages.map(p => p.name);
   console.log(`   Pages:      ${pageNames.join(', ')}`);
   console.log(`   Artboards:  ${sketchFile.pages.reduce((n, p) => n + p.artboards.length, 0)}`);
-  console.log(`   Parse time: ${parseResult.metadata.parseTime}ms\n`);
+  console.log(`   Parse time: ${parseResult.metadata.parseTime}ms`);
+
+  // Print warnings so users can see partial parse issues
+  if (parseResult.warnings.length > 0) {
+    console.log(`   ⚠️  ${parseResult.warnings.length} warning(s) during parse`);
+    parseResult.warnings.slice(0, 5).forEach(w => console.log(`      ${w}`));
+    if (parseResult.warnings.length > 5) {
+      console.log(`      ... and ${parseResult.warnings.length - 5} more`);
+    }
+  }
+  console.log('');
 
   if (sketchFile.pages.length === 0) {
     console.error('❌ No pages found in the .sketch file.');
@@ -276,6 +286,7 @@ async function cmdConvert(args: string[]) {
   const enableLayout = !(values['no-layout'] as boolean);
 
   const outputFiles: string[] = [];
+  const usedFileNames = new Set<string>();
 
   for (let i = 0; i < artboards.length; i++) {
     const artboard = artboards[i];
@@ -292,8 +303,17 @@ async function cmdConvert(args: string[]) {
     // Assemble Vue SFC
     const sfc = assembleSFC(result.template, result.style, result.script);
 
+    // Ensure unique filename (pure-Chinese names may collide after transliteration)
+    let fileName = result.fileName;
+    const base = fileName.replace(/\.vue$/, '');
+    let suffix = 2;
+    while (usedFileNames.has(fileName)) {
+      fileName = `${base}-${suffix++}.vue`;
+    }
+    usedFileNames.add(fileName);
+
     // Write file
-    const outPath = path.join(outputDir, result.fileName);
+    const outPath = path.join(outputDir, fileName);
     await fs.mkdir(path.dirname(outPath), { recursive: true });
     await fs.writeFile(outPath, sfc, 'utf-8');
 
