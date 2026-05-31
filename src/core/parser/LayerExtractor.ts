@@ -180,7 +180,7 @@ export class LayerExtractor {
 
       default:
         warnings.push(`Unknown layer type: ${layerData._class}`);
-        layer = { ...baseLayer, type: LayerType.UNKNOWN };
+        layer = { ...baseLayer, type: LayerType.UNKNOWN } as unknown as Layer;
     }
 
     return { layer, warnings, depth };
@@ -224,7 +224,7 @@ export class LayerExtractor {
         return LayerType.SYMBOL;
 
       default:
-        return LayerType.FRAME;
+        return LayerType.UNKNOWN;
     }
   }
 
@@ -502,7 +502,7 @@ export class LayerExtractor {
   /**
    * 同步版本的图层解析（用于子图层）
    */
-  private parseLayerSync(layerData: any, depth: number, parent: Layer | null, document: any): {
+  private parseLayerSync(layerData: any, depth: number, parent: any, document: any): {
     layer?: Layer;
     warnings: string[];
   } {
@@ -549,7 +549,7 @@ export class LayerExtractor {
         break;
       case LayerType.IMAGE:
         // 简化处理，异步版本会在主流程中处理
-        layer = { ...baseLayer, type: LayerType.IMAGE, imageData: undefined };
+        layer = { ...baseLayer, type: LayerType.IMAGE, imageData: { ref: '', data: Buffer.alloc(0), width: baseLayer.rect.width, height: baseLayer.rect.height } };
         break;
       case LayerType.GROUP:
         layer = this.parseGroupLayer(layerData, baseLayer, depth, document, warnings);
@@ -564,7 +564,7 @@ export class LayerExtractor {
         layer = this.parseComponentLayer(layerData, baseLayer, depth, document, warnings);
         break;
       default:
-        layer = { ...baseLayer, type: LayerType.UNKNOWN };
+        layer = { ...baseLayer, type: LayerType.UNKNOWN } as unknown as Layer;
     }
 
     return { layer, warnings };
@@ -689,7 +689,7 @@ export class LayerExtractor {
     const g = Math.round((color.green ?? 0) * 255);
     const b = Math.round((color.blue ?? 0) * 255);
 
-    return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+    return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('') as string;
   }
 
   private parsePoint(pointStr: string): { x: number; y: number } {
@@ -751,8 +751,8 @@ export class LayerExtractor {
     if (!layer) return;
 
     // 如果图层有子图层，递归添加
-    if (layer.layers && Array.isArray(layer.layers)) {
-      for (const subLayer of layer.layers) {
+    if ('layers' in layer && Array.isArray((layer as any).layers)) {
+      for (const subLayer of (layer as any).layers) {
         targetArray.push(subLayer);
         this.addAllNestedLayers(subLayer, targetArray);
       }

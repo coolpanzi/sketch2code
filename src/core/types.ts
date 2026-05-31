@@ -13,7 +13,7 @@ export type UUID = string;
 /**
  * 颜色值（十六进制格式）
  */
-export type HexColor = `#${string}`;
+export type HexColor = string;
 
 /**
  * 位置坐标

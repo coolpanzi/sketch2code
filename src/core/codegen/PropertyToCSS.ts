@@ -201,7 +201,6 @@ export class BEMGenerator {
     '星形': 'star',
     '路径': 'path',
     '文本': 'text',
-    '图片': 'img',
     '位图': 'bitmap',
     '符号': 'symbol',
     '组件': 'comp',

@@ -36,8 +36,8 @@ interface PatternDetection {
  * Analyzes sibling relationships within containers to detect layout patterns.
  */
 export class LayoutConverter {
-  private cssMap: CSSPropertiesMap;
-  private layerClassMap: Map<string, string>;
+  private cssMap!: CSSPropertiesMap;
+  private layerClassMap!: Map<string, string>;
   private convertedClasses: string[] = [];
 
   /**
@@ -454,6 +454,7 @@ export class LayoutConverter {
 
   /**
    * Applies a flex row layout to the container.
+   * Preserves position:relative on parent so it stays in its own parent's layout context.
    */
   private applyRowLayout(
     parentCSS: Record<string, string>,
@@ -468,12 +469,13 @@ export class LayoutConverter {
       parentCSS['gap'] = `${gap}px`;
     }
 
-    // Remove absolute positioning from parent (keep dimensions)
-    delete parentCSS['position'];
+    // Keep position:relative so this container stays positioned within its own parent
+    // (which may use absolute positioning to place this container)
+    parentCSS['position'] = 'relative';
     delete parentCSS['left'];
     delete parentCSS['top'];
 
-    // Remove absolute positioning from children
+    // Remove absolute positioning from children (they flow within the flex container)
     for (const child of childBounds) {
       const childCSS = cssMap[child.className];
       if (!childCSS) continue;
@@ -481,12 +483,12 @@ export class LayoutConverter {
       delete childCSS['position'];
       delete childCSS['left'];
       delete childCSS['top'];
-      // Keep width/height as they define element sizing
     }
   }
 
   /**
    * Applies a flex column layout to the container.
+   * Preserves position:relative on parent so it stays in its own parent's layout context.
    */
   private applyColumnLayout(
     parentCSS: Record<string, string>,
@@ -501,8 +503,8 @@ export class LayoutConverter {
       parentCSS['gap'] = `${gap}px`;
     }
 
-    // Remove absolute positioning from parent
-    delete parentCSS['position'];
+    // Keep position:relative so this container stays positioned within its own parent
+    parentCSS['position'] = 'relative';
     delete parentCSS['left'];
     delete parentCSS['top'];
 
@@ -553,8 +555,8 @@ export class LayoutConverter {
       parentCSS['gap'] = `${gap}px`;
     }
 
-    // Remove absolute positioning from parent
-    delete parentCSS['position'];
+    // Keep position:relative so this container stays positioned within its own parent
+    parentCSS['position'] = 'relative';
     delete parentCSS['left'];
     delete parentCSS['top'];
 
@@ -588,12 +590,9 @@ export class LayoutConverter {
     parentCSS['flex-direction'] = isHorizontal ? 'row' : 'column';
     parentCSS['justify-content'] = 'space-between';
     parentCSS['align-items'] = 'center';
-    if (detection.gap > 0) {
-      // Don't set gap for space-between, as justify-content handles distribution
-    }
 
-    // Remove absolute positioning from parent
-    delete parentCSS['position'];
+    // Keep position:relative so this container stays positioned within its own parent
+    parentCSS['position'] = 'relative';
     delete parentCSS['left'];
     delete parentCSS['top'];
 

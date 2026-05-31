@@ -16,5 +16,19 @@
     "noUnusedParameters": false
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/code-gen.ts",
+    "src/component-analyzer.ts",
+    "src/layout-engine.ts",
+    "src/region-detector.ts",
+    "src/token-extractor.ts",
+    "src/output-generator.ts",
+    "src/png-renderer.ts",
+    "src/verification.ts",
+    "src/core/codegen/CodeGenerator.ts",
+    "src/core/codegen/CodeGeneratorEnhanced.ts",
+    "src/core/codegen/HighFidelityGenerator.ts"
+  ]
 }

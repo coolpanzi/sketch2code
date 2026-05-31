@@ -3,7 +3,7 @@
  * 正确提取颜色、文本样式和组件信息
  */
 
-import { DesignSystem, ColorDefinition, TextStyleDefinition, Layer, HexColor, UUID, LayerType } from '../types.js';
+import { DesignSystem, ColorDefinition, TextStyleDefinition, Layer, HexColor, UUID, LayerType, Spacing } from '../types.js';
 
 /**
  * 递归遍历所有图层
@@ -11,8 +11,8 @@ import { DesignSystem, ColorDefinition, TextStyleDefinition, Layer, HexColor, UU
 function traverseAllLayers(layers: Layer[], callback: (layer: Layer) => void): void {
   for (const layer of layers) {
     callback(layer);
-    if (layer.layers && Array.isArray(layer.layers)) {
-      traverseAllLayers(layer.layers, callback);
+    if ('layers' in layer && Array.isArray((layer as any).layers)) {
+      traverseAllLayers((layer as any).layers, callback);
     }
   }
 }
@@ -29,8 +29,8 @@ export class DesignSystemExtractor {
     errors: Array<{ stage: string; message: string; details?: any }>;
     warnings: string[];
   }> {
-    const errors = [];
-    const warnings = [];
+    const errors: Array<{ stage: string; message: string; details?: any }> = [];
+    const warnings: string[] = [];
 
     try {
       // 提取颜色系统
@@ -375,7 +375,7 @@ export class DesignSystemExtractor {
   /**
    * 提取间距系统
    */
-  private async extractSpacing(allLayers: Layer[], warnings: string[]): Promise<number[]> {
+  private async extractSpacing(allLayers: Layer[], warnings: string[]): Promise<Spacing[]> {
     const spacingValues = new Set<number>();
 
     // 收集图层的位置和尺寸信息
@@ -395,10 +395,10 @@ export class DesignSystemExtractor {
     // 如果没有找到间距值，添加默认间距
     if (sortedSpacing.length === 0) {
       warnings.push('No spacing values found, adding default spacing');
-      return [4, 8, 12, 16, 24, 32, 48, 64];
+      return [4, 8, 12, 16, 24, 32, 48, 64].map(v => ({ top: v, right: v, bottom: v, left: v }));
     }
 
-    return sortedSpacing.slice(0, 20); // 最多返回20个间距值
+    return sortedSpacing.slice(0, 20).map(v => ({ top: v, right: v, bottom: v, left: v }));
   }
 
   /**
@@ -515,7 +515,7 @@ export class DesignSystemExtractor {
 
   // ─── 辅助方法 ─────────────────────────────────────────────────────
 
-  private parseColor(color: any): string {
+  private parseColor(color: any): HexColor {
     if (!color) return '#000000';
     if (typeof color === 'string' && color.startsWith('#')) return color;
 
@@ -575,6 +575,6 @@ export async function extractDesignSystemFixed(document: any, allLayers: Layer[]
   errors: Array<{ stage: string; message: string; details?: any }>;
   warnings: string[];
 }> {
-  const extractor = new DesignSystemExtractorFixed();
+  const extractor = new DesignSystemExtractor();
   return await extractor.extract(document, allLayers);
 }
