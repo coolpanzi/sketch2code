@@ -348,7 +348,7 @@ export class LayerExtractor {
     return {
       ...baseLayer,
       type: LayerType.IMAGE,
-      imageData
+      imageData: imageData || { ref: '', data: Buffer.alloc(0), width: baseLayer.rect.width, height: baseLayer.rect.height }
     };
   }
 
@@ -585,7 +585,7 @@ export class LayerExtractor {
         layer = this.parseComponentLayer(layerData, baseLayer, depth, document, warnings);
         break;
       default:
-        layer = { ...baseLayer, type: LayerType.UNKNOWN } as unknown as Layer;
+        layer = { ...baseLayer, type: LayerType.UNKNOWN, rawClass: layerData._class };
     }
 
     return { layer, warnings };
