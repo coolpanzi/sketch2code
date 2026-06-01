@@ -16,6 +16,11 @@ export type UUID = string;
 export type HexColor = string;
 
 /**
+ * CSS 颜色字符串，可能是 #RRGGBB、rgba() 或 transparent
+ */
+export type CSSColor = string;
+
+/**
  * 位置坐标
  */
 export interface Point {
@@ -90,7 +95,7 @@ export interface LayerStyleDefinition {
  */
 export interface FillStyle {
   type: 'color' | 'gradient' | 'pattern';
-  color: HexColor;
+  color: CSSColor;
   opacity: number;
   isEnabled: boolean;
   gradient?: GradientInfo;
@@ -110,7 +115,7 @@ export interface GradientInfo {
  * 渐变停止点
  */
 export interface GradientStop {
-  color: HexColor;
+  color: CSSColor;
   position: number; // 0-1
 }
 
@@ -118,7 +123,7 @@ export interface GradientStop {
  * 边框样式
  */
 export interface BorderStyle {
-  color: HexColor;
+  color: CSSColor;
   thickness: number;
   position: 'center' | 'inside' | 'outside';
   opacity: number;
@@ -129,7 +134,7 @@ export interface BorderStyle {
  * 阴影样式
  */
 export interface ShadowStyle {
-  color: HexColor;
+  color: CSSColor;
   blurRadius: number;
   offsetX: number;
   offsetY: number;
@@ -162,7 +167,6 @@ export enum LayerType {
   TEXT = 'text',
   SHAPE = 'shape',
   IMAGE = 'image',
-  FRAME = 'frame',
   UNKNOWN = 'unknown'
 }
 

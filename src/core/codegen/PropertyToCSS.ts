@@ -392,11 +392,14 @@ function gradientToCSS(gradient: GradientInfo, opacity: number): string {
       const pos = Math.round(stop.position * 100);
       // Apply fill opacity to each stop's color if needed
       if (opacity < 0.995) {
-        // Parse hex to rgba with opacity
-        const r = parseInt(color.slice(1, 3), 16);
-        const g = parseInt(color.slice(3, 5), 16);
-        const b = parseInt(color.slice(5, 7), 16);
-        return `rgba(${r}, ${g}, ${b}, ${opacity.toFixed(4)}) ${pos}%`;
+        if (color.startsWith('#') && color.length >= 7) {
+          const r = parseInt(color.slice(1, 3), 16);
+          const g = parseInt(color.slice(3, 5), 16);
+          const b = parseInt(color.slice(5, 7), 16);
+          return `rgba(${r}, ${g}, ${b}, ${opacity.toFixed(4)}) ${pos}%`;
+        }
+        // Already rgba() or other format — use as-is
+        return `${color} ${pos}%`;
       }
       return `${color} ${pos}%`;
     })
@@ -680,19 +683,6 @@ export class PropertyToCSS {
 
     const hint = hints.length > 0 ? '-' + hints.slice(0, 2).join('-') : '';
     return prefix + hint + '-' + this.classNameCounter;
-  }
-
-  /**
-   * Makes a class name unique by appending a numeric suffix.
-   */
-  private makeUnique(base: string): string {
-    let counter = 1;
-    let candidate = `${base}-${counter}`;
-    while (this.usedClassNames.has(candidate)) {
-      counter++;
-      candidate = `${base}-${counter}`;
-    }
-    return candidate;
   }
 
   /**
