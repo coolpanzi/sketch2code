@@ -73,7 +73,7 @@ export interface TextStyleDefinition {
   fontFamily: string;
   fontSize: number;
   fontWeight: string;
-  color: HexColor;
+  color: CSSColor;
   lineHeight?: number;
   letterSpacing?: number;
   textAlign?: 'left' | 'center' | 'right' | 'justified';
@@ -263,7 +263,7 @@ export interface GroupLayer extends BaseLayer {
 export interface ArtboardLayer extends BaseLayer {
   type: LayerType.ARTBOARD;
   layers: Layer[];
-  backgroundColor?: HexColor;
+  backgroundColor?: CSSColor;
   resizeMode?: 'fit' | 'fill' | 'stretch';
 }
 

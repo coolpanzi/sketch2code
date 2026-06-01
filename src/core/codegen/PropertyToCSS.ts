@@ -834,12 +834,17 @@ export class PropertyToCSS {
       props['background'] = gradientToCSS(fill.gradient, fill.opacity);
     } else if (fill.type === 'color') {
       const colorCSS = sketchColorToCSS(fill.color);
-      if (fill.opacity < 0.995 && fill.color?.startsWith('#')) {
-        // Need to apply opacity to the color
-        const r = parseInt(fill.color.slice(1, 3), 16);
-        const g = parseInt(fill.color.slice(3, 5), 16);
-        const b = parseInt(fill.color.slice(5, 7), 16);
-        props['background-color'] = `rgba(${r}, ${g}, ${b}, ${fill.opacity.toFixed(4)})`;
+      if (fill.opacity < 0.995) {
+        // Apply fill opacity — only hex needs manual rgba conversion;
+        // rgba() colors already carry their own alpha from parseColor.
+        if (fill.color?.startsWith('#') && fill.color.length >= 7) {
+          const r = parseInt(fill.color.slice(1, 3), 16);
+          const g = parseInt(fill.color.slice(3, 5), 16);
+          const b = parseInt(fill.color.slice(5, 7), 16);
+          props['background-color'] = `rgba(${r}, ${g}, ${b}, ${fill.opacity.toFixed(4)})`;
+        } else {
+          props['background-color'] = colorCSS;
+        }
       } else {
         props['background-color'] = colorCSS;
       }
