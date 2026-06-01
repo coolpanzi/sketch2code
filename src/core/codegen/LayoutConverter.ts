@@ -197,13 +197,13 @@ export class LayoutConverter {
     // Space-between horizontally: elements are at opposite horizontal ends
     const isHorizontallyOpposite =
       Math.abs((a.x - containerLeft) + (b.x + b.width - containerRight)) <
-      containerWidth * 0.15 &&
+      containerWidth * 0.08 &&
       Math.abs(a.y - b.y) < Math.max(a.height, b.height) * 0.5;
 
     // Space-between vertically: elements are at opposite vertical ends
     const isVerticallyOpposite =
       Math.abs((a.y - containerTop) + (b.y + b.height - containerBottom)) <
-      containerHeight * 0.15 &&
+      containerHeight * 0.08 &&
       Math.abs(a.x - b.x) < Math.max(a.width, b.width) * 0.5;
 
     if (isHorizontallyOpposite) {
@@ -603,6 +603,10 @@ export class LayoutConverter {
    * Converts absolute position (left/top) to margin on a flex/grid container.
    * This prevents the container from jumping to (0,0) when switched to
    * position:relative inside an absolutely-positioned parent.
+   *
+   * Safe for nested flex: if left/top were already removed by an outer
+   * container's layout conversion, the values will be undefined and the
+   * corresponding margin is simply not set.
    */
   private preservePositionAsMargin(parentCSS: Record<string, string>): void {
     const left = parentCSS['left'];
@@ -610,11 +614,11 @@ export class LayoutConverter {
 
     parentCSS['position'] = 'relative';
 
-    // Convert left/top to margin-left/margin-top to preserve visual position
-    if (left && left !== '0' && left !== '0px') {
+    // Only set margin when there is a meaningful, non-zero position value
+    if (left && left !== '0' && left !== '0px' && left !== 'undefined') {
       parentCSS['margin-left'] = left;
     }
-    if (top && top !== '0' && top !== '0px') {
+    if (top && top !== '0' && top !== '0px' && top !== 'undefined') {
       parentCSS['margin-top'] = top;
     }
 

@@ -376,7 +376,9 @@ export function hexToCSS(hex: string): string {
  * Converts a BlendMode enum value to its CSS mix-blend-mode string.
  */
 function blendModeToCSS(blendMode: BlendMode): string {
-  // The BlendMode enum values are already the CSS-compatible strings
+  // IMPORTANT: The BlendMode enum values are deliberately kept in sync with
+  // CSS mix-blend-mode values. Changing enum names in types.ts will break
+  // CSS output here.
   return String(blendMode);
 }
 
@@ -433,14 +435,11 @@ function shadowToCSS(shadow: ShadowStyle): string {
   const blur = Math.round(shadow.blurRadius);
   const spread = Math.round(shadow.spread);
 
-  // Shadow color - Sketch shadows typically have full opacity in the color field,
-  // with the alpha channel representing the actual opacity
-  const color = shadow.color || '#000000';
-  const r = parseInt(color.slice(1, 3), 16);
-  const g = parseInt(color.slice(3, 5), 16);
-  const b = parseInt(color.slice(5, 7), 16);
+  // Shadow color — may be hex (#RRGGBB) or rgba(...) from the parser.
+  // Use sketchColorToCSS which handles both formats correctly.
+  const color = sketchColorToCSS(shadow.color || '#000000');
 
-  return `${inset}${offsetX}px ${offsetY}px ${blur}px ${spread}px rgba(${r}, ${g}, ${b}, 1)`;
+  return `${inset}${offsetX}px ${offsetY}px ${blur}px ${spread}px ${color}`;
 }
 
 // ─── PropertyToCSS Main Class ─────────────────────────────────────────────
@@ -860,13 +859,15 @@ export class PropertyToCSS {
 
   /**
    * Converts border styles to CSS border properties.
+   * CSS `border` does NOT support comma-separated values — only the first enabled
+   * border is rendered as `border`. If a second border exists, it is simulated
+   * via `outline` (which renders outside the box model).
    */
   private applyBorders(borders: BorderStyle[], props: Record<string, string>): void {
     const enabledBorders = borders.filter((b) => b.isEnabled);
     if (enabledBorders.length === 0) return;
 
-    // Combine all enabled borders into a single border property
-    const borderParts: string[] = [];
+    const resolved: string[] = [];
 
     for (const border of enabledBorders) {
       const thickness = Math.round(border.thickness);
@@ -875,7 +876,6 @@ export class PropertyToCSS {
       const colorCSS = sketchColorToCSS(border.color);
       const opacity = border.opacity;
 
-      // Build the border string
       let borderColor = colorCSS;
       if (opacity < 0.995 && border.color?.startsWith('#')) {
         const r = parseInt(border.color.slice(1, 3), 16);
@@ -884,18 +884,19 @@ export class PropertyToCSS {
         borderColor = `rgba(${r}, ${g}, ${b}, ${opacity.toFixed(4)})`;
       }
 
-      borderParts.push(`${thickness}px solid ${borderColor}`);
+      resolved.push(`${thickness}px solid ${borderColor}`);
 
-      // Handle border position (inside/outside)
       if (border.position === 'inside') {
-        // Shift the border inward by adjusting box model
-        // box-sizing is already content-box by default, but we use outline to avoid layout shift
         props['box-sizing'] = 'border-box';
       }
     }
 
-    if (borderParts.length > 0) {
-      props['border'] = borderParts.join(', ');
+    // First border → `border`; second border (if any) → `outline`
+    if (resolved.length >= 1) {
+      props['border'] = resolved[0];
+    }
+    if (resolved.length >= 2) {
+      props['outline'] = resolved[1];
     }
   }
 

@@ -709,6 +709,13 @@ export class LayerExtractor {
     const r = Math.round((color.red ?? 0) * 255);
     const g = Math.round((color.green ?? 0) * 255);
     const b = Math.round((color.blue ?? 0) * 255);
+    const a = color.alpha ?? 1;
+
+    // Preserve alpha when it represents meaningful transparency
+    // (e.g. Sketch shadow colors use alpha for actual shadow opacity)
+    if (a < 0.995 && a > 0.005) {
+      return `rgba(${r}, ${g}, ${b}, ${a.toFixed(4)})`;
+    }
 
     return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('') as string;
   }

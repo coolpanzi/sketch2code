@@ -125,12 +125,8 @@ export class SketchFileParser {
         // If no artboards found, use ONLY the top-level layers (not the flattened allLayers).
         // allLayers is recursively flattened — using it would cause nested children to appear
         // as siblings, breaking LayoutConverter's coordinate detection.
-        const topLevelLayers = layerResult.allLayers.filter(l => {
-          // A top-level layer is one whose parent is the page, not another layer.
-          // In the extraction flow, these are the direct children of pageData.layers.
-          // We identify them by checking if they appear in pageData.layers.
-          return (pageData.layers || []).some((pl: any) => pl.do_objectID === l.id);
-        });
+        const topLevelIds = new Set((pageData.layers || []).map((pl: any) => pl.do_objectID));
+        const topLevelLayers = layerResult.allLayers.filter(l => topLevelIds.has(l.id));
 
         const pageContent = pageArtboards.length > 0 ? pageArtboards : topLevelLayers;
 
