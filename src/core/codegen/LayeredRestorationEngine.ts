@@ -3,17 +3,20 @@
  * 默认全程零LLM，毫秒级完成
  */
 
-import type { Layer, CSSPropertiesMap, GenerationResult } from '../types.js';
+import type { Layer, CSSPropertiesMap, GenerationResult, DesignSystem } from '../types.js';
 import { PropertyToCSS } from './PropertyToCSS.js';
 import { AlgorithmicStructureGenerator } from './AlgorithmicStructureGenerator.js';
 import { StructureGenerator } from './StructureGenerator.js';
 import { LayoutConverter } from './LayoutConverter.js';
+import { flattenArtboard } from './LayerFlattener.js';
 
 export interface RestoreOptions {
   /** 是否启用布局转换 (Phase 3) */
   enableLayoutConversion?: boolean;
   /** 是否使用LLM增强 (Phase 2 LLM版) */
   useLLM?: boolean;
+  /** 设计系统（用于 CSS token 化） */
+  designSystem?: DesignSystem;
 }
 
 export class LayeredRestorationEngine {
@@ -27,7 +30,7 @@ export class LayeredRestorationEngine {
     artboard: Layer,
     options: RestoreOptions = {}
   ): Promise<GenerationResult> {
-    const { enableLayoutConversion = true, useLLM = false } = options;
+    const { enableLayoutConversion = true, useLLM = false, designSystem } = options;
     const startTime = Date.now();
 
     console.log(`\n🎯 分层还原: ${componentName}`);
@@ -39,6 +42,13 @@ export class LayeredRestorationEngine {
     const phase1Result = this.phase1.convert(artboard);
     console.log(`   ✅ Phase 1: ${Object.keys(phase1Result.cssMap).length} 个CSS类 (${Date.now() - startTime}ms)`);
 
+    // Phase 1.5: 拍平无效嵌套
+    const flattenResult = flattenArtboard(artboard);
+    const flattenedArtboard = flattenResult.layers[0] || artboard;
+    if (flattenResult.removedCount > 0) {
+      console.log(`   🔧 拍平: 移除 ${flattenResult.removedCount} 个无效嵌套组`);
+    }
+
     // Phase 2: HTML结构生成
     let phase2Result;
     let llmCalls = 0;
@@ -47,7 +57,7 @@ export class LayeredRestorationEngine {
       // LLM模式（慢，但语义更好）
       console.log('   Phase 2: 结构推理 (LLM)...');
       phase2Result = await this.phase2LLM.generate(
-        componentName, artboard,
+        componentName, flattenedArtboard,
         phase1Result.cssMap,
         phase1Result.layerClassMap
       );
@@ -56,7 +66,7 @@ export class LayeredRestorationEngine {
       // 算法模式（快，零LLM）
       console.log('   Phase 2: 结构生成 (算法)...');
       phase2Result = this.phase2Algorithmic.generate(
-        artboard,
+        flattenedArtboard,
         phase1Result.cssMap,
         phase1Result.layerClassMap
       );
@@ -68,14 +78,25 @@ export class LayeredRestorationEngine {
     let convertedClasses: string[] = [];
     if (enableLayoutConversion) {
       console.log('   Phase 3: 布局转换...');
-      const phase3Result = this.phase3.convert(phase1Result.cssMap, artboard, phase1Result.layerClassMap);
+      const phase3Result = this.phase3.convert(phase1Result.cssMap, flattenedArtboard, phase1Result.layerClassMap);
       finalCSSMap = phase3Result.cssMap;
       convertedClasses = phase3Result.convertedClasses;
       console.log(`   ✅ Phase 3: ${convertedClasses.length} 个容器转换`);
     }
 
+    // Phase 3.5: CSS Token 化 — 用设计系统的 CSS 变量替换硬编码值
+    let rootVars = '';
+    if (designSystem && designSystem.colors.length > 0) {
+      const tokenResult = this.tokenizeCSSMap(finalCSSMap, designSystem);
+      finalCSSMap = tokenResult.cssMap;
+      rootVars = tokenResult.rootBlock;
+      if (tokenResult.replacedCount > 0) {
+        console.log(`   🎨 Token化: ${tokenResult.replacedCount} 处硬编码颜色 → CSS变量`);
+      }
+    }
+
     // 合并结果
-    const cssText = this.cssMapToString(finalCSSMap);
+    const cssText = (rootVars ? rootVars + '\n\n' : '') + this.cssMapToString(finalCSSMap);
     const usedColors = this.extractUsedTokens(finalCSSMap);
     const generationTime = Date.now() - startTime;
 
@@ -91,6 +112,72 @@ export class LayeredRestorationEngine {
       usedTokens: { colors: usedColors, spacing: [], typography: [] },
       metadata: { generationTime, llmCalls, accuracy: undefined }
     };
+  }
+
+  /**
+   * Tokenize hardcoded colors into CSS custom properties.
+   * Builds a hex → var name map from the design system, then replaces
+   * matching color values across all CSS classes.
+   */
+  private tokenizeCSSMap(
+    cssMap: CSSPropertiesMap,
+    designSystem: DesignSystem
+  ): { cssMap: CSSPropertiesMap; rootBlock: string; replacedCount: number } {
+    // Build hex → CSS variable name map
+    const hexToVar = new Map<string, string>();
+    const usedTokens = new Map<string, string>(); // var name → hex
+
+    for (const color of designSystem.colors) {
+      const hex = color.hex.toUpperCase();
+      // Generate a CSS variable name from the color name
+      const varName = '--color-' + color.name
+        .replace(/[^a-zA-Z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase()
+        || '--color-' + hex.replace('#', '');
+      hexToVar.set(hex, varName);
+    }
+
+    // Walk all CSS properties and replace hex values with var()
+    let replacedCount = 0;
+    const colorProps = ['color', 'background-color', 'background', 'border', 'border-color', 'box-shadow', 'outline'];
+
+    for (const [, props] of Object.entries(cssMap)) {
+      for (const [prop, value] of Object.entries(props) as [string, string][]) {
+        if (!colorProps.some(p => prop === p || prop.includes('color') || prop.includes('shadow'))) continue;
+
+        // Extract hex colors from the value
+        const hexMatch = value.match(/#[0-9A-Fa-f]{6}\b/g);
+        if (!hexMatch) continue;
+
+        for (const hex of hexMatch) {
+          const upperHex = hex.toUpperCase();
+          const varName = hexToVar.get(upperHex);
+          if (varName) {
+            const newValue = value.replaceAll(hex, `var(${varName})`);
+            if (newValue !== value) {
+              props[prop] = newValue;
+              usedTokens.set(varName, upperHex);
+              replacedCount++;
+            }
+          }
+        }
+      }
+    }
+
+    // Build :root block
+    let rootBlock = '';
+    if (usedTokens.size > 0) {
+      const lines: string[] = [':root {'];
+      for (const [varName, hex] of usedTokens) {
+        lines.push(`  ${varName}: ${hex};`);
+      }
+      lines.push('}');
+      rootBlock = lines.join('\n');
+    }
+
+    return { cssMap, rootBlock, replacedCount };
   }
 
   private cssMapToString(cssMap: CSSPropertiesMap): string {

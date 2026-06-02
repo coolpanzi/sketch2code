@@ -134,6 +134,11 @@ export class LayoutConverter {
     // Detect layout pattern
     const detection = this.detectPattern(childBounds);
     if (detection.pattern === 'none') {
+      // Mark the parent as intentionally kept with absolute positioning
+      // so developers know it was considered but rejected
+      if (cssMap[parentClassName]) {
+        cssMap[parentClassName]['/* layout */'] = 'absolute — no clean pattern detected';
+      }
       return;
     }
 
@@ -162,6 +167,12 @@ export class LayoutConverter {
       if (grid.pattern !== 'none') {
         return grid;
       }
+
+      // Check for mixed layout (segmented rows + columns)
+      const mixed = this.detectMixedLayout(bounds);
+      if (mixed.pattern !== 'none' && mixed.confidence > 0.5) {
+        return mixed;
+      }
     }
 
     // Check for row pattern
@@ -180,6 +191,77 @@ export class LayoutConverter {
   }
 
   /**
+   * Detects a mixed layout: segmented row patterns stacked vertically.
+   * First clusters by y-coordinate, then checks if each cluster is a clean row.
+   */
+  private detectMixedLayout(bounds: LayerBounds[]): PatternDetection {
+    if (bounds.length < 4) return { pattern: 'none', gap: 0, confidence: 0 };
+
+    // Cluster by y-coordinate
+    const sorted = [...bounds].sort((a, b) => a.y - b.y || a.x - b.x);
+    const clusters: LayerBounds[][] = [];
+    let currentCluster: LayerBounds[] = [sorted[0]];
+
+    const avgHeight = sorted.reduce((s, b) => s + b.height, 0) / sorted.length;
+
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = currentCluster[0];
+      const curr = sorted[i];
+      // If y is within 30% of avg height from first element in cluster, same row
+      if (Math.abs(curr.y - prev.y) < avgHeight * 0.3) {
+        currentCluster.push(curr);
+      } else {
+        clusters.push(currentCluster);
+        currentCluster = [curr];
+      }
+    }
+    clusters.push(currentCluster);
+
+    // Need at least 2 clusters and each cluster must have ≥ 1 element
+    if (clusters.length < 2) return { pattern: 'none', gap: 0, confidence: 0 };
+
+    // Check if clusters are clean (elements in each cluster are row-aligned)
+    let totalGap = 0;
+    let gapCount = 0;
+    let allClean = true;
+
+    for (const cluster of clusters) {
+      if (cluster.length < 1) {
+        allClean = false;
+        break;
+      }
+      // If cluster has multiple elements, check row alignment
+      if (cluster.length >= 2) {
+        const rowCheck = this.detectRowPattern(cluster);
+        if (rowCheck.pattern === 'none') {
+          allClean = false;
+          break;
+        }
+        totalGap += rowCheck.gap;
+        gapCount++;
+      }
+    }
+
+    if (!allClean) return { pattern: 'none', gap: 0, confidence: 0 };
+
+    // Also calculate vertical gap between clusters
+    let totalRowGap = 0;
+    for (let i = 1; i < clusters.length; i++) {
+      const prevBottom = Math.max(...clusters[i - 1].map(b => b.y + b.height));
+      const currTop = Math.min(...clusters[i].map(b => b.y));
+      totalRowGap += Math.max(0, currTop - prevBottom);
+    }
+    const avgRowGap = Math.round(totalRowGap / (clusters.length - 1));
+
+    const avgGap = gapCount > 0 ? Math.round(totalGap / gapCount) : avgRowGap;
+    const confidence = allClean ? 0.7 : 0.5;
+
+    // Stored as 'column' with gap since from the parent's perspective,
+    // the clusters are stacked vertically
+    return { pattern: 'column', gap: Math.max(avgGap, avgRowGap), confidence };
+  }
+
+  /**
    * Detects patterns between exactly two elements.
    * Checks for space-between (elements at opposite horizontal/vertical ends).
    */
@@ -195,16 +277,17 @@ export class LayoutConverter {
     const containerHeight = containerBottom - containerTop;
 
     // Space-between horizontally: elements are at opposite horizontal ends
+    // Tolerance raised from 0.08 → 0.15 to catch looser layouts
     const isHorizontallyOpposite =
       Math.abs((a.x - containerLeft) + (b.x + b.width - containerRight)) <
-      containerWidth * 0.08 &&
-      Math.abs(a.y - b.y) < Math.max(a.height, b.height) * 0.5;
+      containerWidth * 0.15 &&
+      Math.abs(a.y - b.y) < Math.max(a.height, b.height) * 0.6;
 
     // Space-between vertically: elements are at opposite vertical ends
     const isVerticallyOpposite =
       Math.abs((a.y - containerTop) + (b.y + b.height - containerBottom)) <
-      containerHeight * 0.08 &&
-      Math.abs(a.x - b.x) < Math.max(a.width, b.width) * 0.5;
+      containerHeight * 0.15 &&
+      Math.abs(a.x - b.x) < Math.max(a.width, b.width) * 0.6;
 
     if (isHorizontallyOpposite) {
       const gap = Math.abs(b.x - (a.x + a.width));

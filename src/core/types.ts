@@ -274,7 +274,8 @@ export interface SymbolLayer extends BaseLayer {
   type: LayerType.SYMBOL;
   symbolMasterId: UUID;
   symbolMasterName: string;
-  overrides?: Map<string, any>; // Symbol实例的覆盖属性
+  layers?: Layer[]; // 解析后的 master 子图层（Symbol 展开后填充）
+  overrideValues?: any[]; // 原始 overrideValues，用于文本/颜色覆盖
 }
 
 /**
@@ -345,6 +346,7 @@ export interface SketchFile {
   pages: Page[];
   designSystem: DesignSystem;
   images: Record<string, Buffer>;
+  symbolMasterMap: Map<string, any>; // symbolID → raw master layer JSON
   symbolUsage: {
     totalSymbols: number;
     uniqueComponents: number;

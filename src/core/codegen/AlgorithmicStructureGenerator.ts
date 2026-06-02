@@ -212,14 +212,18 @@ export class AlgorithmicStructureGenerator {
   /**
    * 生成单个元素的HTML
    */
-  private generateElement(layer: Layer, indent: string = '  '): string {
+  private generateElement(layer: Layer, indent: string = '  ', parentRect?: { x: number; y: number; width: number; height: number } | null): string {
     const cls = this.getClassName(layer);
-    const tag = this.inferTag(layer);
+    const tag = this.inferTag(layer, parentRect);
 
     switch (layer.type) {
       case LayerType.TEXT:
         this.stats.textLayers++;
         const text = (layer as TextLayer).content || '';
+        if (!text || !text.trim()) {
+          // 文本内容为空 — 可能是解析失败或设计层占位符，输出图层名作为注释提示
+          return `${indent}<!-- TEXT: "${layer.name}" --><span class="${cls}">{{placeholder}}</span>`;
+        }
         return `${indent}<span class="${cls}">${this.escapeHtml(text)}</span>`;
 
       case LayerType.SHAPE:
@@ -248,7 +252,18 @@ export class AlgorithmicStructureGenerator {
 
       case LayerType.SYMBOL:
         this.stats.symbolLayers++;
-        return `${indent}<div class="${cls}"></div>`;
+        // Symbol with resolved children: render them recursively (same as GROUP)
+        {
+          const symChildren = this.getLayers(layer);
+          if (symChildren.length === 0) {
+            return `${indent}<div class="${cls}"></div>`;
+          }
+          const childHtml = symChildren
+            .map(c => this.generateElement(c, indent + '  '))
+            .filter(Boolean)
+            .join('\n');
+          return `${indent}<div class="${cls}">\n${childHtml}\n${indent}</div>`;
+        }
 
       default:
         return `${indent}<div class="${cls}"></div>`;
@@ -284,27 +299,36 @@ export class AlgorithmicStructureGenerator {
 
   /**
    * 推断语义化HTML标签
+   * 优先用图层名匹配，再用相对位置推断
    */
-  private inferTag(layer: Layer): string {
+  private inferTag(layer: Layer, parentRect?: { x: number; y: number; width: number; height: number } | null): string {
     const name = (layer.name || '').toLowerCase();
 
-    // 通过图层名推断语义
-    if (/nav|导航|菜单|menu|header|头部/.test(name)) return 'nav';
-    if (/sidebar|侧栏|侧边/.test(name)) return 'aside';
-    if (/footer|底部|页脚/.test(name)) return 'footer';
-    if (/main|主体|内容/.test(name)) return 'main';
-    if (/header|头部|顶栏/.test(name)) return 'header';
-    if (/section|区域|板块/.test(name)) return 'section';
+    // 通过图层名推断语义（优先级最高）
+    if (/nav|导航|菜单|menu|tabbar|toolbar/.test(name)) return 'nav';
+    if (/sidebar|侧栏|侧边|左侧|左栏|侧面板/.test(name)) return 'aside';
+    if (/footer|底部|页脚|底栏|版权/.test(name)) return 'footer';
+    if (/header|头部|顶栏|状态栏|statusbar|顶栏导航/.test(name)) return 'header';
+    if (/main|主体|内容|区域|板块|section/.test(name)) return 'section';
+    if (/card|卡片|面板|仪表|看板|dashboard/.test(name)) return 'section';
     if (/btn|按钮/.test(name)) return 'button';
     if (/input|输入|search|搜索/.test(name)) return 'input';
     if (/img|image|图片|头像|avatar/.test(name)) return 'img';
+    if (/list|列表|列表项/.test(name)) return 'ul';
+    if (/table|表格|数据表/.test(name)) return 'table';
 
-    // 通过位置推断
+    // 通过相对位置推断（需要 parentRect 计算相对比例）
     if (layer.type === LayerType.GROUP || layer.type === LayerType.ARTBOARD) {
-      // 顶部区域
-      if (layer.rect.y < 80 && layer.rect.width > 500) return 'header';
-      // 左侧区域
-      if (layer.rect.x < 50 && layer.rect.height > 300) return 'aside';
+      if (parentRect && parentRect.width > 0 && parentRect.height > 0) {
+        const relativeY = (layer.rect.y - parentRect.y) / parentRect.height;
+        const relativeX = (layer.rect.x - parentRect.x) / parentRect.width;
+        const relativeWidth = layer.rect.width / parentRect.width;
+        const relativeHeight = layer.rect.height / parentRect.height;
+
+        if (relativeY < 0.1 && relativeWidth > 0.5) return 'header';
+        if (relativeX < 0.05 && relativeHeight > 0.3) return 'aside';
+        if (relativeY > 0.85 && relativeWidth > 0.5) return 'footer';
+      }
     }
 
     return 'div';

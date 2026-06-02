@@ -24,10 +24,25 @@ export interface LayerExtractResult {
  * 图层提取器
  */
 export class LayerExtractor {
+  private images: Record<string, Buffer> = {};
+  private symbolMasterMap: Map<string, any> = new Map();
+  private resolvedMasterCache: Map<string, Layer[] | null> = new Map();
+  private static readonly MAX_SYMBOL_DEPTH = 5;
+
   /**
    * 提取图层数据
+   * @param document - Sketch 文档 JSON
+   * @param images - 从 ZIP 提取的图片 Map（ref → Buffer）
+   * @param symbolMasterMap - symbolID → raw master layer JSON
    */
-  async extract(document: any): Promise<LayerExtractResult> {
+  async extract(
+    document: any,
+    images?: Record<string, Buffer>,
+    symbolMasterMap?: Map<string, any>
+  ): Promise<LayerExtractResult> {
+    this.images = images || {};
+    this.symbolMasterMap = symbolMasterMap || new Map();
+    this.resolvedMasterCache = new Map();
     const errors: LayerExtractResult['errors'] = [];
     const warnings: string[] = [];
     const artboards: Layer[] = [];
@@ -171,7 +186,7 @@ export class LayerExtractor {
         break;
 
       case LayerType.SYMBOL:
-        layer = this.parseSymbolLayer(layerData, baseLayer, warnings);
+        layer = this.parseSymbolLayer(layerData, baseLayer, depth, document, warnings);
         break;
 
       case LayerType.COMPONENT:
@@ -211,6 +226,7 @@ export class LayerExtractor {
 
       case 'group':
       case 'MSImmutableGroup':
+      case 'shapeGroup':
         return LayerType.GROUP;
 
       case 'artboard':
@@ -312,44 +328,50 @@ export class LayerExtractor {
    * 解析图像图层
    */
   private async parseImageLayer(layerData: any, baseLayer: BaseLayer, warnings: string[]): Promise<Layer> {
-    const imageRef = layerData.image;
-
-    let imageData: any = undefined;
-
-    if (imageRef) {
-      try {
-        // 处理文件引用
-        if (imageRef._class === 'MSJSONFileReference') {
-          imageData = {
-            ref: imageRef._ref || '',
-            data: Buffer.alloc(0), // 占位数据
-            width: baseLayer.rect.width,
-            height: baseLayer.rect.height
-          };
-        }
-        // 处理内联数据
-        else if (imageRef._class === 'MSJSONOriginalDataReference' && imageRef.data?._data) {
-          try {
-            imageData = {
-              ref: 'inline',
-              data: Buffer.from(imageRef.data._data, 'base64'),
-              width: baseLayer.rect.width,
-              height: baseLayer.rect.height
-            };
-          } catch {
-            warnings.push(`Failed to decode inline image data for layer: ${baseLayer.name}`);
-          }
-        }
-      } catch (error) {
-        warnings.push(`Failed to parse image data for layer: ${baseLayer.name}`);
-      }
-    }
+    const imageData = this.resolveImageData(layerData, baseLayer, warnings);
 
     return {
       ...baseLayer,
       type: LayerType.IMAGE,
       imageData: imageData || { ref: '', data: Buffer.alloc(0), width: baseLayer.rect.width, height: baseLayer.rect.height }
     };
+  }
+
+  /**
+   * 解析图像数据（统一用于同步/异步路径）
+   */
+  private resolveImageData(layerData: any, baseLayer: BaseLayer, warnings: string[]): any {
+    const imageRef = layerData.image;
+    if (!imageRef) return undefined;
+
+    try {
+      if (imageRef._class === 'MSJSONFileReference') {
+        const ref = imageRef._ref || '';
+        // 从 ZIP 提取的 images map 中查找实际图片数据
+        const actualData = this.images[ref] || this.images[`images/${ref}`] || Buffer.alloc(0);
+        return {
+          ref,
+          data: actualData,
+          width: baseLayer.rect.width,
+          height: baseLayer.rect.height
+        };
+      }
+      if (imageRef._class === 'MSJSONOriginalDataReference' && imageRef.data?._data) {
+        try {
+          return {
+            ref: 'inline',
+            data: Buffer.from(imageRef.data._data, 'base64'),
+            width: baseLayer.rect.width,
+            height: baseLayer.rect.height
+          };
+        } catch {
+          warnings.push(`Failed to decode inline image data for layer: ${baseLayer.name}`);
+        }
+      }
+    } catch (error) {
+      warnings.push(`Failed to parse image data for layer: ${baseLayer.name}`);
+    }
+    return undefined;
   }
 
   /**
@@ -420,16 +442,32 @@ export class LayerExtractor {
 
   /**
    * 解析Symbol图层
+   * 查找 symbolMaster → 递归解析 master.layers → 应用 overrideValues
    */
-  private parseSymbolLayer(layerData: any, baseLayer: BaseLayer, warnings: string[]): Layer {
+  private parseSymbolLayer(
+    layerData: any,
+    baseLayer: BaseLayer,
+    depth: number,
+    document: any,
+    warnings: string[]
+  ): Layer {
     let symbolMasterId: UUID | undefined;
     let symbolMasterName = 'Unknown Symbol';
 
-    // Symbol实例使用symbolID而不是symbolMaster
     if (layerData.symbolID) {
       symbolMasterId = layerData.symbolID;
-      // 尝试从symbolID中提取有意义的名称
       symbolMasterName = this.extractSymbolName(layerData.symbolID, layerData.name);
+    }
+
+    // 尝试解析 master 内容
+    let resolvedLayers: Layer[] | undefined;
+    if (symbolMasterId && depth < LayerExtractor.MAX_SYMBOL_DEPTH) {
+      resolvedLayers = this.resolveSymbolMaster(symbolMasterId, depth, document, warnings);
+    }
+
+    // 应用 overrideValues（文本覆盖等）
+    if (resolvedLayers && layerData.overrideValues) {
+      this.applyOverrides(resolvedLayers, layerData.overrideValues);
     }
 
     return {
@@ -437,8 +475,102 @@ export class LayerExtractor {
       type: LayerType.SYMBOL,
       symbolMasterId: symbolMasterId || '',
       symbolMasterName,
-      overrides: new Map()
+      layers: resolvedLayers,
+      overrideValues: layerData.overrideValues
     };
+  }
+
+  /**
+   * 解析 symbol master 的子图层（带缓存）
+   */
+  private resolveSymbolMaster(
+    symbolID: string,
+    depth: number,
+    document: any,
+    warnings: string[]
+  ): Layer[] | undefined {
+    // 检查缓存
+    if (this.resolvedMasterCache.has(symbolID)) {
+      const cached = this.resolvedMasterCache.get(symbolID)!;
+      // 缓存了 null 表示找不到 master，缓存了数组则直接返回深拷贝
+      if (cached === null) return undefined;
+      return this.deepCloneLayers(cached);
+    }
+
+    // 查找 master JSON
+    const masterJson = this.symbolMasterMap.get(symbolID);
+    if (!masterJson) {
+      this.resolvedMasterCache.set(symbolID, null);
+      return undefined;
+    }
+
+    // 解析 master 的子图层
+    const masterLayers: Layer[] = [];
+    const masterFrame = masterJson.frame || { x: 0, y: 0 };
+
+    for (const childData of (masterJson.layers || [])) {
+      // 偏移坐标：master 内部坐标是相对 master 原点的，需要减去 master 的原点
+      // 以使子图层坐标相对于 symbol 实例
+      const result = this.parseLayerSync(childData, depth + 1, null, document);
+      if (result.layer) {
+        // 偏移子图层坐标（减去 master 原点偏移，使坐标相对于 symbol 实例的原点）
+        result.layer.rect.x -= masterFrame.x || 0;
+        result.layer.rect.y -= masterFrame.y || 0;
+        masterLayers.push(result.layer);
+      }
+      warnings.push(...result.warnings);
+    }
+
+    // 缓存（存原始解析结果，后续通过 deepCloneLayers 返回副本）
+    this.resolvedMasterCache.set(symbolID, masterLayers);
+
+    return this.deepCloneLayers(masterLayers);
+  }
+
+  /**
+   * 深拷贝 Layer 数组（用于缓存命中时返回独立副本）
+   */
+  private deepCloneLayers(layers: Layer[]): Layer[] {
+    return JSON.parse(JSON.stringify(layers));
+  }
+
+  /**
+   * 应用 Symbol 实例的 overrideValues 到解析后的子图层
+   * 处理文本覆盖（_stringValue 后缀）
+   */
+  private applyOverrides(layers: Layer[], overrideValues: any[]): void {
+    if (!overrideValues || overrideValues.length === 0) return;
+
+    // 构建 override 映射：提取 layerID 部分
+    // overrideName 格式: "layerID_stringValue" 或 "layerID_fillColor" 等
+    for (const ov of overrideValues) {
+      const name: string = ov.overrideName || '';
+      const value = ov.value;
+
+      // 文本覆盖
+      if (name.endsWith('_stringValue')) {
+        const layerId = name.replace('_stringValue', '');
+        const textLayer = this.findLayerById(layers, layerId);
+        if (textLayer && textLayer.type === LayerType.TEXT) {
+          (textLayer as any).content = String(value);
+        }
+      }
+      // 其他覆盖类型（fillColor, color 等）暂不处理
+    }
+  }
+
+  /**
+   * 在图层树中按 ID 查找图层（递归）
+   */
+  private findLayerById(layers: Layer[], id: string): Layer | null {
+    for (const layer of layers) {
+      if (layer.id === id) return layer;
+      if ('layers' in layer && Array.isArray((layer as any).layers)) {
+        const found = this.findLayerById((layer as any).layers, id);
+        if (found) return found;
+      }
+    }
+    return null;
   }
 
   /**
@@ -548,27 +680,11 @@ export class LayerExtractor {
         layer = this.parseShapeLayer(layerData, baseLayer, style, warnings);
         break;
       case LayerType.IMAGE: {
-        // Sync path: store the image reference for later resolution.
-        // For file references: store the _ref path.
-        // For inline data: store the base64 string directly so it can be decoded in a post-pass.
-        const img = layerData.image;
-        let imgRef = '';
-        let imgData = Buffer.alloc(0);
-
-        if (img) {
-          if (img._class === 'MSJSONFileReference') {
-            imgRef = img._ref || '';
-          } else if (img._class === 'MSJSONOriginalDataReference' && img.data?._data) {
-            imgRef = 'inline';
-            // Preserve the base64 string for async post-pass resolution
-            imgData = Buffer.from(img.data._data, 'base64');
-          }
-        }
-
+        const imageData = this.resolveImageData(layerData, baseLayer, warnings);
         layer = {
           ...baseLayer,
           type: LayerType.IMAGE,
-          imageData: { ref: imgRef, data: imgData, width: baseLayer.rect.width, height: baseLayer.rect.height }
+          imageData: imageData || { ref: '', data: Buffer.alloc(0), width: baseLayer.rect.width, height: baseLayer.rect.height }
         };
         break;
       }
@@ -579,7 +695,7 @@ export class LayerExtractor {
         layer = this.parseArtboardLayer(layerData, baseLayer, depth, document, warnings);
         break;
       case LayerType.SYMBOL:
-        layer = this.parseSymbolLayer(layerData, baseLayer, warnings);
+        layer = this.parseSymbolLayer(layerData, baseLayer, depth, document, warnings);
         break;
       case LayerType.COMPONENT:
         layer = this.parseComponentLayer(layerData, baseLayer, depth, document, warnings);

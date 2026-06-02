@@ -98,7 +98,10 @@ export class SketchFileParser {
         };
       }
 
-      // Step 2: Build pages directly from document.pages[]
+      // Step 2: Build symbolMasterMap for resolving Symbol instances
+      const symbolMasterMap = this.buildSymbolMasterMap(document);
+
+      // Step 3: Build pages directly from document.pages[]
       // Each page in document.pages has a .name and .layers[] — we preserve
       // this mapping instead of guessing from artboard names.
       const rawPages: any[] = document.pages || [];
@@ -107,10 +110,14 @@ export class SketchFileParser {
 
       for (const pageData of rawPages) {
         const pageName: string = pageData.name || 'Unnamed Page';
-        const pageLayers: any[] = pageData.layers || [];
 
         // Extract layers for this page using LayerExtractor
-        const layerResult = await this.layerExtractor.extract({ pages: [pageData] });
+        // Pass images map and symbolMasterMap for symbol resolution
+        const layerResult = await this.layerExtractor.extract(
+          { pages: [pageData] },
+          fileData.images,
+          symbolMasterMap
+        );
 
         if (layerResult.errors.length > 0) {
           errors.push(...layerResult.errors);
@@ -165,6 +172,7 @@ export class SketchFileParser {
         pages,
         designSystem,
         images: fileData.images,
+        symbolMasterMap,
         symbolUsage
       };
 
@@ -212,6 +220,34 @@ export class SketchFileParser {
         }
       };
     }
+  }
+
+  /**
+   * 构建 symbolMasterMap：合并 foreignSymbols + 本地 symbolMaster
+   * key = symbolID（与 symbolInstance.symbolID 匹配）
+   */
+  private buildSymbolMasterMap(document: any): Map<string, any> {
+    const map = new Map<string, any>();
+
+    // 1. foreignSymbols（来自外部组件库）
+    const foreignSymbols: any[] = document.foreignSymbols || [];
+    for (const fs of foreignSymbols) {
+      if (fs.symbolMaster?.symbolID) {
+        map.set(fs.symbolMaster.symbolID, fs.symbolMaster);
+      }
+    }
+
+    // 2. 本地 symbolMaster（页面内的 Components 页）
+    const rawPages: any[] = document.pages || [];
+    for (const page of rawPages) {
+      for (const layer of (page.layers || [])) {
+        if (layer._class === 'symbolMaster' && layer.symbolID) {
+          map.set(layer.symbolID, layer);
+        }
+      }
+    }
+
+    return map;
   }
 
   /**

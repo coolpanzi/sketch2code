@@ -228,6 +228,132 @@ export class BEMGenerator {
     '重做': 'redo',
     '刷新': 'refresh',
     '同步': 'sync',
+    // ── 业务/数据类 ──
+    '业绩': 'perf',
+    '业绩达成': 'perf',
+    '达成': 'achieved',
+    '目标': 'target',
+    '实际': 'actual',
+    '同比': 'yoy',
+    '环比': 'mom',
+    '增长率': 'growth',
+    '占比': 'ratio',
+    '排名': 'rank',
+    '排行': 'ranking',
+    '指标': 'metric',
+    '总数': 'total',
+    '汇总': 'summary',
+    '明细': 'detail',
+    '概况': 'overview',
+    '概览': 'overview',
+    '趋势': 'trend',
+    '对比': 'compare',
+    '统计': 'stats',
+    '分析': 'analysis',
+    // ── 表格/图表类 ──
+    '表格': 'table',
+    '行数据': 'row',
+    '表头': 'thead',
+    '列标题': 'col-title',
+    '单元格': 'cell',
+    '图表': 'chart',
+    '柱状图': 'bar-chart',
+    '折线图': 'line-chart',
+    '饼图': 'pie-chart',
+    '数据卡片': 'data-card',
+    '指标卡': 'metric-card',
+    '仪表盘': 'dashboard',
+    // ── 组织结构类 ──
+    '机构': 'org',
+    '部门': 'dept',
+    '团队': 'team',
+    '小组': 'group',
+    '渠道': 'channel',
+    '产渠道': 'prod-channel',
+    '产品线': 'product-line',
+    '事业部': 'division',
+    // ── 页面区域 ──
+    '顶部栏': 'top-bar',
+    '顶部导航': 'top-nav',
+    '顶栏': 'top-bar',
+    '底栏': 'bottom-bar',
+    '状态栏': 'status-bar',
+    '筛选区': 'filter-area',
+    '筛选栏': 'filter-bar',
+    '搜索区': 'search-area',
+    '操作区': 'action-area',
+    '操作栏': 'action-bar',
+    '内容区': 'content-area',
+    '详情区': 'detail-area',
+    '表单区': 'form-area',
+    // ── 元素类 ──
+    '下拉选择': 'select',
+    '下拉框': 'select',
+    '下拉菜单': 'dropdown',
+    '下拉': 'dropdown',
+    '输入框': 'input',
+    '文本输入': 'input',
+    '单选框': 'radio',
+    '复选框': 'checkbox',
+    '开关按钮': 'toggle',
+    '滑动条': 'slider',
+    '选项卡': 'tab',
+    '标签页': 'tab',
+    '弹窗': 'modal',
+    '对话框': 'dialog',
+    '提示框': 'tooltip',
+    '气泡': 'bubble',
+    '列表项': 'list-item',
+    '卡片项': 'card-item',
+    '分隔线': 'divider',
+    '分割线': 'divider',
+    '分割': 'divider',
+    '角标': 'badge',
+    '徽标': 'badge',
+    '头像框': 'avatar',
+    '评分': 'rating',
+    '星级': 'stars',
+    '步骤': 'step',
+    '步骤条': 'steps',
+    // ── 文本样式类 ──
+    '大标题': 'heading-lg',
+    '中标题': 'heading-md',
+    '小标题': 'heading-sm',
+    '副标题': 'subtitle',
+    '正文': 'body-text',
+    '正文内容': 'body-text',
+    '辅助文字': 'caption',
+    '辅助文本': 'caption',
+    '提示文字': 'hint',
+    '占位文字': 'placeholder',
+    '数字': 'number',
+    '金额': 'amount',
+    '百分比': 'percent',
+    '单位': 'unit',
+    // ── 状态类 ──
+    '已完成': 'done',
+    '进行中': 'in-progress',
+    '待处理': 'pending',
+    '已取消': 'cancelled',
+    '已过期': 'expired',
+    '正常': 'normal',
+    '异常': 'abnormal',
+    '警告': 'warning',
+    '危险': 'danger',
+    '信息': 'info',
+    '提示': 'tip',
+    // ── 看板/报表类 ──
+    '看板': 'kanban',
+    '报表': 'report',
+    '日报': 'daily',
+    '周报': 'weekly',
+    '月报': 'monthly',
+    '季报': 'quarterly',
+    '年报': 'annual',
+    '快报': 'flash',
+    '简报': 'brief',
+    '大屏': 'screen',
+    '驾驶舱': 'cockpit',
   };
 
   /**
@@ -520,7 +646,7 @@ export class PropertyToCSS {
         this.applyShapeProperties(layer as ShapeLayer, props);
         break;
       case LayerType.IMAGE:
-        this.applyImageProperties(props);
+        this.applyImageProperties(layer as ImageLayer, props);
         break;
       case LayerType.GROUP:
       case LayerType.ARTBOARD:
@@ -528,6 +654,8 @@ export class PropertyToCSS {
         this.applyContainerProperties(layer as GroupLayer | ArtboardLayer | ComponentLayer, props);
         break;
       case LayerType.SYMBOL:
+        // Resolved Symbol → treat as container, recurse into master's children
+        this.applyContainerProperties(layer as any, props);
         break;
     }
 
@@ -580,10 +708,20 @@ export class PropertyToCSS {
       .replace(/-+/g, '-')
       .replace(/^-+|-+$/g, '');
 
-    // Step 3: If name is still generic, use type + visual hints
+    // Step 3: If name is still generic, try to extract from text content first
     if (!baseName || baseName.length < 2 || /^\d+$/.test(baseName) ||
-        /^(unnamed|group|rect|layer|e\d+)$/i.test(baseName)) {
-      baseName = this.inferClassName(layer);
+        /^(unnamed|group|rect|layer|el\d+|grp\d+|txt\d+|shape\d+|img\d+|sym\d+|board\d+)$/i.test(baseName)) {
+      // 优先：如果图层是 TEXT 类型且有内容，用内容的前几个字符做类名
+      if (layer.type === 'text' && (layer as any).content) {
+        const contentBase = BEMGenerator.toClassName((layer as any).content.trim().substring(0, 8));
+        if (contentBase && contentBase.length >= 2 && !/^\d+$/.test(contentBase)) {
+          baseName = contentBase;
+        } else {
+          baseName = this.inferClassName(layer);
+        }
+      } else {
+        baseName = this.inferClassName(layer);
+      }
     }
 
     // Step 4: Truncate to max 20 chars
@@ -813,11 +951,24 @@ export class PropertyToCSS {
 
   /**
    * Applies image-specific properties.
+   * Generates background-image if image data is available.
    */
-  private applyImageProperties(props: Record<string, string>): void {
+  private applyImageProperties(layer: ImageLayer, props: Record<string, string>): void {
     props['background-size'] = 'cover';
     props['background-position'] = 'center';
     props['background-repeat'] = 'no-repeat';
+
+    // Generate background-image if we have actual image data
+    if (layer.imageData?.data && layer.imageData.data.length > 0) {
+      if (layer.imageData.ref === 'inline') {
+        // Base64 data URI
+        props['background-image'] = `url(data:image/png;base64,${layer.imageData.data.toString('base64')})`;
+      } else {
+        // File reference — use relative path
+        const filename = layer.imageData.ref.replace(/^images\//, '');
+        props['background-image'] = `url(./assets/images/${filename})`;
+      }
+    }
   }
 
   /**

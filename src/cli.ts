@@ -193,6 +193,18 @@ async function cmdConvert(args: string[]) {
   console.log(`   Artboards:  ${sketchFile.pages.reduce((n, p) => n + p.artboards.length, 0)}`);
   console.log(`   Parse time: ${parseResult.metadata.parseTime}ms`);
 
+  // ── Step 1.5: Export images to output directory ─────────────────────────
+  const imageEntries = Object.entries(sketchFile.images);
+  if (imageEntries.length > 0) {
+    const imagesDir = path.join(outputDir, 'assets', 'images');
+    await fs.mkdir(imagesDir, { recursive: true });
+    for (const [ref, buffer] of imageEntries) {
+      const filename = path.basename(ref);
+      await fs.writeFile(path.join(imagesDir, filename), buffer);
+    }
+    console.log(`   Images:     ${imageEntries.length} file(s) exported`);
+  }
+
   // Print warnings so users can see partial parse issues
   if (parseResult.warnings.length > 0) {
     console.log(`   ⚠️  ${parseResult.warnings.length} warning(s) during parse`);
@@ -297,6 +309,7 @@ async function cmdConvert(args: string[]) {
     const result = await engine.restore(componentName, artboard, {
       enableLayoutConversion: enableLayout,
       useLLM,
+      designSystem: sketchFile.designSystem,
     });
 
     // Assemble Vue SFC

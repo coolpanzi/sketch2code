@@ -2,6 +2,7 @@ node_modules/
 dist/
 output/
 test-output/
+output-test/
 .DS_Store
 *.sketch
 *.png
